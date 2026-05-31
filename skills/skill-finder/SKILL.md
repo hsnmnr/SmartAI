@@ -51,38 +51,50 @@ Use the `AskUserQuestion` tool when there are 2–4 mutually exclusive paths. Fo
 
 ## Step 2 — Search
 
-Use the `gh` CLI (via Bash) as the primary search engine. It's faster and richer than WebSearch for GitHub. Fall back to WebSearch only if `gh` is unavailable or you need non-GitHub sources.
+Use `WebFetch` against the GitHub REST API as the primary search engine. It's universal (no install, no auth, works on any machine), and returns clean JSON. Fall back to `WebSearch` only for non-GitHub sources.
 
-### Primary search command
+### Primary search call
 
-```bash
-gh search repos "<query> claude skill" \
-  --sort=stars --limit=30 \
-  --json fullName,stargazersCount,forksCount,description,url,updatedAt,pushedAt
 ```
+WebFetch(
+  url="https://api.github.com/search/repositories?q=<query>+claude+skill&sort=stars&order=desc&per_page=30",
+  prompt="Return the top results as a compact list. For each repo include: full_name, stargazers_count, forks_count, description, html_url, pushed_at, default_branch. Sort by stargazers_count descending."
+)
+```
+
+URL-encode spaces in the query as `+`. The API is unauthenticated, public, and rate-limited to 60 requests per hour — a full skill-finder run uses ~8 calls, so the limit is not a practical concern for a single session.
 
 ### Search across multiple angles in parallel
 
-Run **3–5 queries in the same message** (parallel Bash calls) to triangulate. The same skill may be findable under many names. Cover:
+Run **3–5 queries in the same message** (parallel `WebFetch` calls) to triangulate. The same skill may be findable under many names. Cover:
 
-1. **Direct task phrasing**: `"<task> claude skill"` — e.g. `"SaaS blog claude skill"`
-2. **Domain phrasing**: `"<domain> claude skill"` — e.g. `"content marketing claude skill"`
-3. **Output phrasing**: `"<output type> claude skill"` — e.g. `"landing page claude skill"`
-4. **Adjacent phrasing**: `"<adjacent term> claude"` — e.g. `"copywriting claude"`, `"SEO claude"`
-5. **Awesome-list scan**: `"awesome claude skills"` — these are aggregators; the highest-starred ones index hundreds of skills you'd otherwise miss
+1. **Direct task phrasing**: `<task>+claude+skill` — e.g. `SaaS+blog+claude+skill`
+2. **Domain phrasing**: `<domain>+claude+skill` — e.g. `content+marketing+claude+skill`
+3. **Output phrasing**: `<output+type>+claude+skill` — e.g. `landing+page+claude+skill`
+4. **Adjacent phrasing**: `<adjacent+term>+claude` — e.g. `copywriting+claude`, `SEO+claude`
+5. **Awesome-list scan**: `awesome+claude+skills` — these are aggregators; the highest-starred ones index hundreds of skills you'd otherwise miss
 
 ### Don't forget the mega-packs
 
 The largest community repos (`anthropics/skills`, `alirezarezvani/claude-skills`, `ComposioHQ/awesome-claude-skills`, `hesreallyhim/awesome-claude-code`) often contain dozens of skills that won't show up by name in a top-level repo search because they're nested inside. After the broad search, **drill into the top 2–3 awesome-lists and skill-packs** with:
 
-```bash
-gh api repos/<owner>/<repo>/contents/skills --jq '.[] | {name,type}'
-gh api repos/<owner>/<repo>/contents/<path>/SKILL.md --jq '.content' | base64 -d | head -40
+```
+# List a folder's contents
+WebFetch(
+  url="https://api.github.com/repos/<owner>/<repo>/contents/skills",
+  prompt="Return each entry as name + type."
+)
+
+# Read a specific SKILL.md (uses the raw content URL — no base64 decoding needed)
+WebFetch(
+  url="https://raw.githubusercontent.com/<owner>/<repo>/<default_branch>/<path>/SKILL.md",
+  prompt="Return the YAML frontmatter and the first 60 lines of the body."
+)
 ```
 
-…to surface skills that match the user's need.
+Use the `default_branch` from the search results (usually `main`, sometimes `master`).
 
-See `references/search-strategies.md` for advanced tactics (date filters, language filters, fork-rate as a signal, non-English skills, etc.).
+See `references/search-strategies.md` for advanced tactics (date filters, language filters, fork-rate as a signal, non-English skills, optional `gh` CLI accelerator).
 
 ---
 
@@ -119,8 +131,11 @@ A **5-star fit on a low-star repo beats a 3-star fit on a famous one.** Don't ju
 
 **Read the actual SKILL.md** for the top 3 candidates before scoring quality. Stars don't tell you whether the prompt is well-written. Use:
 
-```bash
-gh api repos/<owner>/<repo>/contents/<path-to-SKILL.md> --jq '.content' | base64 -d
+```
+WebFetch(
+  url="https://raw.githubusercontent.com/<owner>/<repo>/<default_branch>/<path-to-SKILL.md>",
+  prompt="Return the full file content verbatim."
+)
 ```
 
 ---
@@ -156,7 +171,7 @@ Output format (see `references/output-template.md` for the full template):
 
 > **User:** "Find me a skill for writing SaaS comparison blog posts"
 
-You: *Skip clarification (request is specific). Run 4 parallel searches: `"saas blog claude skill"`, `"comparison page claude skill"`, `"content marketing claude skill"`, and drill into `alirezarezvani/claude-skills` + the official `anthropics/skills`. Triage to ~10 candidates. Read top-3 SKILL.md files. Score. Output ranked table + verdict.*
+You: *Skip clarification (request is specific). Run 4 parallel `WebFetch` calls against `https://api.github.com/search/repositories?q=...` for `saas+blog+claude+skill`, `comparison+page+claude+skill`, `content+marketing+claude+skill`, and drill into `alirezarezvani/claude-skills` + the official `anthropics/skills` via the contents endpoint. Triage to ~10 candidates. Read top-3 SKILL.md files via `raw.githubusercontent.com`. Score. Output ranked table + verdict.*
 
 ### Example 2 — Vague need, ask one question
 
@@ -174,7 +189,7 @@ You: *Skip clarification (the "almost worked but missed X" signal is gold). Sear
 
 ## Guidelines
 
-- **Run searches in parallel.** Multiple `gh search` calls in the same Bash batch — never sequentially.
+- **Run searches in parallel.** Multiple `WebFetch` calls in the same message — never sequentially.
 - **Read SKILL.md files before recommending.** Stars are a triage signal, not a quality signal.
 - **Keep the output scannable.** Tables and short cards beat prose paragraphs. The user is choosing between options, not reading an essay.
 - **Cite the repo URL for every skill mentioned.** Always link directly.
