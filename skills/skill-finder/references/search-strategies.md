@@ -1,182 +1,193 @@
 # Search Strategies
 
-Advanced tactics for finding Claude skills on GitHub that you'd miss with a naive single query.
+The full search playbook behind `SKILL.md`'s 3-tier model. Use as a reference when the tier-1 registries don't cover a need or you want to apply advanced filters.
 
-## Tooling
+## Core principle: catalogs before keywords
 
-Primary: **`WebFetch` against the GitHub REST API** (built into Claude Code, no install, no auth).
-
-The REST API endpoints you'll use:
-
-| Purpose | URL |
-|---|---|
-| Search repos | `https://api.github.com/search/repositories?q=<query>&sort=stars&order=desc&per_page=30` |
-| List repo contents | `https://api.github.com/repos/<owner>/<repo>/contents/<path>` |
-| Get repo metadata | `https://api.github.com/repos/<owner>/<repo>` |
-| Read raw file | `https://raw.githubusercontent.com/<owner>/<repo>/<branch>/<path>` |
-
-**Rate limit (unauthenticated):** 60 requests/hour per IP. A typical skill-finder run uses ~8 calls. You can comfortably run 5–7 sessions per hour.
-
-**Sort options for search:** `stars`, `forks`, `updated`, `help-wanted-issues`. Default is best-match — pass `&sort=stars` explicitly.
-
-## Triangulation: search 5 angles in parallel
-
-The same skill is often findable under multiple names. A user asking for "SaaS blog post skill" might want a skill tagged as:
-- "content marketing"
-- "copywriting"
-- "blog generation"
-- "SEO content"
-- "long-form writing"
-
-**Run all of these as parallel `WebFetch` calls in one message.** Then dedupe by `full_name` and merge results.
-
-### Example: user wants "landing page skill"
-
-Five parallel `WebFetch` calls, one per angle:
+The Claude skills universe is **finite and indexed**. A handful of registries already filter the noise — hitting them first is faster, cheaper, and broader than searching raw GitHub. Keyword search on GitHub is for *gaps*, not for *first pass*.
 
 ```
-WebFetch(url="https://api.github.com/search/repositories?q=landing+page+claude+skill&sort=stars&per_page=20", prompt="...")
-WebFetch(url="https://api.github.com/search/repositories?q=saas+marketing+claude+skill&sort=stars&per_page=20", prompt="...")
-WebFetch(url="https://api.github.com/search/repositories?q=copywriting+claude&sort=stars&per_page=20", prompt="...")
-WebFetch(url="https://api.github.com/search/repositories?q=frontend+design+claude+skill&sort=stars&per_page=20", prompt="...")
-WebFetch(url="https://api.github.com/search/repositories?q=conversion+optimization+claude&sort=stars&per_page=20", prompt="...")
+Tier 1 — Curated registries     ~3 calls, dense signal
+   ↓ (only if thin)
+Tier 2 — Surgical GitHub search ~2 calls, narrow angles
+   ↓
+Tier 3 — Deep-read top 3        ~3 calls, judge craft
+                                ────────────────
+                                ~8 calls total
 ```
+
+Track candidates in a working set keyed by `owner/repo[/path]` to dedupe across tiers.
+
+## Tier 1 — The registries to know
+
+### Primary three (always run in parallel)
+
+| Registry | URL | Strength |
+|---|---|---|
+| **agentskills.io** | `https://agentskills.io/llms.txt` then linked pages | Official spec site, LLM-friendly directory format |
+| **buildwithclaude.com** | `https://www.buildwithclaude.com/` | Indexes skills, agents, plugins, marketplace collections across sources |
+| **ComposioHQ awesome-list** | `https://raw.githubusercontent.com/ComposioHQ/awesome-claude-skills/main/README.md` | Largest curated catalog by community (62k+ stars) |
 
 Standard extraction prompt:
-> *"Return the top results as JSON. For each repo: full_name, stargazers_count, forks_count, description, html_url, pushed_at, default_branch. Sort by stargazers_count descending."*
 
-URL-encoding: replace spaces with `+`. For other special characters, use `%XX` encoding.
+> *"List every skill on this page relevant to `<user's need>`. For each: name, one-line description, source link, source repo (owner/repo). Skip unrelated entries. Return as a compact list."*
 
-## Mega-pack drill-down
+### Secondary registries (use as fallback, or to fill gaps)
 
-The biggest community repos contain dozens of skills nested inside. They won't appear in a top-level repo search by topic name. Always drill into:
+| Registry | URL | When to use |
+|---|---|---|
+| **hesreallyhim/awesome-claude-code** | `https://raw.githubusercontent.com/hesreallyhim/awesome-claude-code/main/README.md` | When user needs skills + hooks + slash commands + plugins, not just skills |
+| **travisvn/awesome-claude-skills** | `https://raw.githubusercontent.com/travisvn/awesome-claude-skills/main/README.md` | Heavy focus on Claude Code, often surfaces dev/eng skills |
+| **BehiSecc/awesome-claude-skills** | `https://raw.githubusercontent.com/BehiSecc/awesome-claude-skills/main/README.md` | General-purpose curated index |
+| **anthropics/skills README** | `https://raw.githubusercontent.com/anthropics/skills/main/README.md` | When official / first-party is preferred |
+| **skills.sh** | `https://skills.sh/` | Cross-registry installer/index, can surface non-GitHub-hosted skills |
+| **Claude Code marketplace** | Run `/plugin marketplace` in Claude Code | Curated plugins, some bundle skills |
 
-| Repo | Contains |
-|---|---|
-| `anthropics/skills` | Official skills (~17 production-grade) |
-| `alirezarezvani/claude-skills` | 337+ skills across engineering, marketing, product, ops |
-| `ComposioHQ/awesome-claude-skills` | Largest curated index |
-| `hesreallyhim/awesome-claude-code` | Skills + hooks + slash commands + plugins |
-| `Jeffallan/claude-skills` | 66 full-stack dev skills |
-| `BehiSecc/awesome-claude-skills` | General curated list |
+### Mega-pack repos (single repos containing many skills)
 
-### Drill-down
+Treat these as registries — one fetch lists dozens of nested skills:
+
+| Repo | Stars | Lean |
+|---|---|---|
+| `anthropics/skills` | 144k | Official, production-grade |
+| `alirezarezvani/claude-skills` | 17k | 337+ skills across eng / marketing / product / ops |
+| `Jeffallan/claude-skills` | 9.5k | Full-stack dev |
+| `mohitagw15856/pm-claude-skills` | 916 | Product / PM / business |
+| `bergside/awesome-design-skills` | 1k | Design / UX |
+
+Fetch a mega-pack's skill folder when its theme overlaps the user's need:
 
 ```
-# List skills inside a mega-pack
 WebFetch(
-  url="https://api.github.com/repos/anthropics/skills/contents/skills",
-  prompt="Return each entry as {name, type}."
-)
-
-# Read a specific SKILL.md (raw URL — no base64 to decode)
-WebFetch(
-  url="https://raw.githubusercontent.com/anthropics/skills/main/skills/frontend-design/SKILL.md",
-  prompt="Return the YAML frontmatter and the first 60 lines of the body."
-)
-
-# Get full file tree for one skill
-WebFetch(
-  url="https://api.github.com/repos/anthropics/skills/contents/skills/frontend-design",
-  prompt="Return each entry as {name, type, size}."
+  url="https://api.github.com/repos/<owner>/<repo>/contents/skills",
+  prompt="Return entries with name matching `<user's need>` (semantic match, not exact substring). Include name + type."
 )
 ```
 
-If `main` returns 404 on a raw URL, retry with `master`. You can also read `default_branch` from the repo metadata endpoint to be safe:
+## Tier 2 — When registries miss, search GitHub surgically
+
+Only do this if Tier 1 returns fewer than 3 strong candidates. **Two angles, not five.** Token cost matters.
+
+### The two angles
+
+1. **Direct phrasing** — the user's task verbatim with `claude skill` appended
+2. **Adjacent phrasing** — the nearest domain term with `claude skill` (e.g. user says "compare SaaS products" → adjacent is "content marketing" or "comparison page")
+
+```
+WebFetch(
+  url="https://api.github.com/search/repositories?q=<query>+claude+skill&sort=stars&order=desc&per_page=15",
+  prompt="Return JSON: full_name, stargazers_count, forks_count, description, html_url, pushed_at, default_branch. Sort by stargazers_count descending."
+)
+```
+
+URL-encode spaces as `+`. `per_page=15` is intentional — the long tail of GitHub keyword search rarely beats curated picks. Don't go higher unless the first 15 are noise.
+
+### Rate limit
+
+GitHub REST API: **60 requests/hour unauth**, per IP. The full skill-finder budget is ~8 calls, so you can comfortably run 5–7 sessions per hour.
+
+### Sort options
+
+`sort=stars` is the default choice. Other useful sorts:
+- `sort=updated` — find recently-active skills (hidden gems, see below)
+- `sort=forks` — high-fork repos signal community adoption beyond bookmarking
+
+## Tier 3 — Judge craft on the top 3
+
+After triage and rubric scoring, fetch the actual SKILL.md for the top 3 to score the Quality dimension honestly:
+
+```
+WebFetch(
+  url="https://raw.githubusercontent.com/<owner>/<repo>/<default_branch>/<path>/SKILL.md",
+  prompt="Return the YAML frontmatter verbatim and the first 60 lines of the body."
+)
+```
+
+If `main` returns 404, retry with `master`. Or query the repo metadata once to be safe:
 
 ```
 WebFetch(url="https://api.github.com/repos/<owner>/<repo>", prompt="Return default_branch only.")
 ```
 
-## Quality and freshness filters
+What you're looking for in the SKILL.md:
+- A specific `description` with concrete trigger phrases (not "helps with X")
+- Imperative voice in the body
+- Worked examples
+- Reference files (progressive disclosure done right)
+- Scripts (signals production-readiness)
+- Evals (rare and high-signal)
+
+## Advanced tactics
 
 ### Freshness as a tiebreaker
 
-The search API returns `pushed_at` per repo. After getting raw results, sort by `pushed_at` descending and keep the freshest 15:
+After registry/search results, sort by `pushed_at` descending. A 50-star skill pushed 14 days ago often outperforms a 500-star skill pushed 18 months ago. Prompt the extractor to surface freshness:
 
-> *In your extraction prompt:* "After listing the top 30 by stars, return the 15 with the most recent pushed_at."
+> *"After listing top results, also return the 5 with the most recent pushed_at."*
 
-A skill pushed in the last 90 days is more trustworthy than a 50-star skill pushed 18 months ago.
+### Fork-rate as a usage signal
 
-### Language filters
+`forks_count / stargazers_count` above 0.15 means people are actually adapting the skill, not just bookmarking it. Below 0.02 on a high-star repo signals aspirational bookmarks.
 
-If the user needs an English-language skill, check the README for language signal:
+> *"For each repo, compute fork_ratio = forks_count / stargazers_count. Flag repos with fork_ratio > 0.15."*
 
-```
-WebFetch(
-  url="https://api.github.com/repos/<owner>/<repo>/readme",
-  prompt="The content field is base64-encoded. Decode it and return the first 20 lines. Note the primary language."
-)
-```
+### Hidden gems (recent + cared-about)
 
-Don't drop non-English skills automatically — the SKILL.md logic might still be universal. But flag the language clearly in the comparison.
-
-### Fork-rate as a signal
-
-A repo with a high forks/stars ratio (>15%) is often being adapted by the community — a sign of practical utility. A repo with very low forks but high stars might be aspirational (people bookmark it but don't use it).
-
-When the search results come back, ask for fork ratio in the extraction prompt:
-
-> *"For each repo, also compute forks_count / stargazers_count as fork_ratio. Sort by fork_ratio descending after the star sort."*
-
-## Hidden gem discovery
-
-### Recent + good description
-
-Repos created in the last 60 days won't have high stars yet. Find them with `sort=updated`:
+For skills created in the last 60 days:
 
 ```
 WebFetch(
-  url="https://api.github.com/search/repositories?q=<query>+claude+skill&sort=updated&order=desc&per_page=20",
-  prompt="Return repos with created_at in the last 60 days and a description longer than 50 characters. Include full_name, description, stargazers_count, created_at, pushed_at."
+  url="https://api.github.com/search/repositories?q=<query>+claude+skill&sort=updated&order=desc&per_page=15",
+  prompt="Return repos with created_at in the last 60 days and description length > 50 chars. Include full_name, description, stargazers_count, created_at."
 )
 ```
 
-A long description is a cheap proxy for "the author actually cares."
+A long, specific description on a young repo is a cheap proxy for "the author cares."
 
 ### Author trust signals
 
-If you find one good skill from an author, search their other repos:
+If you find one strong skill from an author, check their other repos:
 
 ```
 WebFetch(
   url="https://api.github.com/search/repositories?q=user:<username>+claude&sort=stars",
-  prompt="Return full_name, stargazers_count, description for each."
+  prompt="Return full_name, stargazers_count, description."
 )
 ```
 
-Authors who ship multiple high-quality skill repos (e.g. Anthropic, well-known DevRel) are higher-trust defaults.
+Authors with 3+ high-star skill repos (Anthropic, prolific DevRel, well-known engineers) are higher-trust defaults.
 
-## Non-GitHub sources
+### Language filters
 
-When GitHub doesn't surface what you need:
+If the user works in English, check the README for primary language:
 
-- **agentskills.io** — the official spec site, may link to canonical skills
-- **buildwithclaude.com** — community hub for skills/agents/plugins (repo: `davepoon/buildwithclaude`)
-- **Claude Code marketplace** (`/plugin marketplace`) — official plugins, some include skills
+```
+WebFetch(
+  url="https://raw.githubusercontent.com/<owner>/<repo>/<default_branch>/README.md",
+  prompt="Return the primary language and the first 15 lines."
+)
+```
 
-Use `WebSearch` only when the GitHub API doesn't surface the right results.
+Don't auto-drop non-English skills — SKILL.md logic is often universal — but flag the language clearly in the comparison.
 
 ## Optional accelerator: `gh` CLI
 
-If the `gh` CLI is installed and authenticated (`brew install gh && gh auth login`), you can substitute it for `WebFetch` to get faster, auth'd queries with a 5,000/hr rate limit. The data shape is identical (same REST API underneath, just shell-formatted).
+If `gh` CLI is installed and authenticated (`brew install gh && gh auth login`), substitute it for `WebFetch` to get auth'd queries with a 5,000/hr rate limit. Same REST API underneath, same JSON shape.
 
-Equivalents:
-
-| WebFetch | `gh` equivalent |
+| WebFetch URL | `gh` equivalent |
 |---|---|
 | `https://api.github.com/search/repositories?q=X&sort=stars` | `gh search repos "X" --sort=stars --json fullName,stargazersCount,forksCount,description,url,pushedAt` |
 | `https://api.github.com/repos/X/Y/contents/path` | `gh api repos/X/Y/contents/path --jq '.[] \| {name,type}'` |
 | `https://raw.githubusercontent.com/X/Y/main/path/SKILL.md` | `gh api repos/X/Y/contents/path/SKILL.md --jq '.content' \| base64 -d` |
 
-Check availability with `command -v gh` and that auth works with `gh auth status`. If either fails, stay on the `WebFetch` path. Don't ask the user to install `gh` — the default path works fine.
+Check availability with `command -v gh && gh auth status`. If either fails, stay on `WebFetch`. Never ask the user to install `gh` — the default path works.
 
-## What to do when nothing fits
+## When nothing fits
 
-If after 5 angles of search nothing rates above 3 stars on the Fit dimension:
+If after Tier 1 + Tier 2 nothing scores ≥3 on Fit:
 
-1. Tell the user honestly: *"Nothing existing fits well — here's the closest match, and here's what's missing."*
-2. Recommend writing a custom skill via Anthropic's `skill-creator`
-3. Sketch what the new skill's `description` would look like (the triggering phrase) and what reference files it would need
+1. Tell the user honestly: *"Nothing existing fits — closest is X, missing Y."*
+2. Recommend writing custom via Anthropic's `skill-creator`
+3. Sketch the `description` and reference-file structure the new skill would need
 
 This is more valuable than recommending a mediocre fit.

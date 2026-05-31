@@ -51,50 +51,69 @@ Use the `AskUserQuestion` tool when there are 2–4 mutually exclusive paths. Fo
 
 ## Step 2 — Search
 
-Use `WebFetch` against the GitHub REST API as the primary search engine. It's universal (no install, no auth, works on any machine), and returns clean JSON. Fall back to `WebSearch` only for non-GitHub sources.
+The Claude skills universe lives in two places: **curated registries** (catalogs that have already filtered the noise) and **GitHub** (the raw source). Search in that order — registries first, GitHub only when registries miss. This is faster, cheaper, and broader than keyword-searching GitHub straight away.
 
-### Primary search call
+Use `WebFetch` as the only tool. Track every candidate in a working set keyed by `owner/repo[/path]` so the same skill discovered in two places doesn't get evaluated twice.
+
+### Tier 1 — Curated registries (always run, in parallel)
+
+Hit these 3 sources in parallel as your **first move**, before any GitHub search. Each is a pre-filtered catalog — one fetch returns dozens of relevant skills.
+
+| Source | URL | What it gives you |
+|---|---|---|
+| Official spec + directory | `https://agentskills.io/llms.txt` then `https://agentskills.io/skills` (or relevant page) | LLM-friendly directory of canonical skills |
+| Community hub | `https://www.buildwithclaude.com/` | Skills, agents, plugins, and marketplace collections in one index |
+| Top awesome-list README | `https://raw.githubusercontent.com/ComposioHQ/awesome-claude-skills/main/README.md` | Largest community-curated index (62k+ stars) |
+
+Each call uses an extraction prompt like:
+
+> *"List every skill on this page relevant to `<user's need>`. For each: name, one-line description, link, and source repo if shown. Skip unrelated entries."*
+
+If registries return ≥3 strong candidates, **skip Tier 2** and go to Tier 3.
+
+### Tier 2 — Surgical GitHub search (only if Tier 1 thin)
+
+Run only when Tier 1 didn't surface a confident fit. Use **2 angles, not 5**:
+
+1. **Direct phrasing**: the user's task verbatim + `claude skill`
+2. **Adjacent phrasing**: the closest domain term + `claude skill`
 
 ```
 WebFetch(
-  url="https://api.github.com/search/repositories?q=<query>+claude+skill&sort=stars&order=desc&per_page=30",
-  prompt="Return the top results as a compact list. For each repo include: full_name, stargazers_count, forks_count, description, html_url, pushed_at, default_branch. Sort by stargazers_count descending."
+  url="https://api.github.com/search/repositories?q=<query>+claude+skill&sort=stars&order=desc&per_page=15",
+  prompt="Return JSON: full_name, stargazers_count, forks_count, description, html_url, pushed_at, default_branch."
 )
 ```
 
-URL-encode spaces in the query as `+`. The API is unauthenticated, public, and rate-limited to 60 requests per hour — a full skill-finder run uses ~8 calls, so the limit is not a practical concern for a single session.
+Use `per_page=15` (not 30) — fewer tokens, the long tail rarely matters. The API is unauth'd (60 req/hr); a full Tier 2 pass is 2 calls.
 
-### Search across multiple angles in parallel
-
-Run **3–5 queries in the same message** (parallel `WebFetch` calls) to triangulate. The same skill may be findable under many names. Cover:
-
-1. **Direct task phrasing**: `<task>+claude+skill` — e.g. `SaaS+blog+claude+skill`
-2. **Domain phrasing**: `<domain>+claude+skill` — e.g. `content+marketing+claude+skill`
-3. **Output phrasing**: `<output+type>+claude+skill` — e.g. `landing+page+claude+skill`
-4. **Adjacent phrasing**: `<adjacent+term>+claude` — e.g. `copywriting+claude`, `SEO+claude`
-5. **Awesome-list scan**: `awesome+claude+skills` — these are aggregators; the highest-starred ones index hundreds of skills you'd otherwise miss
-
-### Don't forget the mega-packs
-
-The largest community repos (`anthropics/skills`, `alirezarezvani/claude-skills`, `ComposioHQ/awesome-claude-skills`, `hesreallyhim/awesome-claude-code`) often contain dozens of skills that won't show up by name in a top-level repo search because they're nested inside. After the broad search, **drill into the top 2–3 awesome-lists and skill-packs** with:
+If a mega-pack (`alirezarezvani/claude-skills`, `Jeffallan/claude-skills`, etc.) appears in results and looks promising, list its skills folder once:
 
 ```
-# List a folder's contents
 WebFetch(
   url="https://api.github.com/repos/<owner>/<repo>/contents/skills",
-  prompt="Return each entry as name + type."
-)
-
-# Read a specific SKILL.md (uses the raw content URL — no base64 decoding needed)
-WebFetch(
-  url="https://raw.githubusercontent.com/<owner>/<repo>/<default_branch>/<path>/SKILL.md",
-  prompt="Return the YAML frontmatter and the first 60 lines of the body."
+  prompt="Return entries matching `<user's need>` by name or path. Include name and type."
 )
 ```
 
-Use the `default_branch` from the search results (usually `main`, sometimes `master`).
+### Tier 3 — Deep-read top 3 finalists
 
-See `references/search-strategies.md` for advanced tactics (date filters, language filters, fork-rate as a signal, non-English skills, optional `gh` CLI accelerator).
+Only for the 3 highest-scoring candidates after triage, fetch the actual SKILL.md to judge craft:
+
+```
+WebFetch(
+  url="https://raw.githubusercontent.com/<owner>/<repo>/<default_branch>/<path>/SKILL.md",
+  prompt="Return the YAML frontmatter verbatim and the first 60 body lines."
+)
+```
+
+Use `default_branch` from earlier responses; default to `main`, retry `master` on 404.
+
+### Token budget
+
+A typical run: **3 registry fetches** + optional **2 GitHub searches** + **3 SKILL.md reads** = **~8 calls max**. If you find yourself making more, you're either dredging the long tail or the need is too vague — pause and re-clarify with the user.
+
+See `references/search-strategies.md` for the full registry catalog, fallback heuristics, and tactics for hidden gems, language filters, fork-rate signals, and the optional `gh` CLI accelerator.
 
 ---
 
@@ -171,7 +190,7 @@ Output format (see `references/output-template.md` for the full template):
 
 > **User:** "Find me a skill for writing SaaS comparison blog posts"
 
-You: *Skip clarification (request is specific). Run 4 parallel `WebFetch` calls against `https://api.github.com/search/repositories?q=...` for `saas+blog+claude+skill`, `comparison+page+claude+skill`, `content+marketing+claude+skill`, and drill into `alirezarezvani/claude-skills` + the official `anthropics/skills` via the contents endpoint. Triage to ~10 candidates. Read top-3 SKILL.md files via `raw.githubusercontent.com`. Score. Output ranked table + verdict.*
+You: *Skip clarification (request is specific). **Tier 1:** parallel fetch agentskills.io, buildwithclaude.com, and ComposioHQ awesome-list README — each prompted to surface SaaS / comparison / content-marketing skills. Tier 1 returns ~8 viable candidates. **Skip Tier 2.** Triage to top 5. **Tier 3:** read 3 SKILL.md files. Score. Output ranked table + verdict. Total: 6 WebFetch calls.*
 
 ### Example 2 — Vague need, ask one question
 
