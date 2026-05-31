@@ -24,13 +24,30 @@ Track candidates in a working set keyed by `owner/repo[/path]` to dedupe across 
 
 | Registry | URL | Strength |
 |---|---|---|
-| **agentskills.io** | `https://agentskills.io/llms.txt` then linked pages | Official spec site, LLM-friendly directory format |
-| **buildwithclaude.com** | `https://www.buildwithclaude.com/` | Indexes skills, agents, plugins, marketplace collections across sources |
-| **ComposioHQ awesome-list** | `https://raw.githubusercontent.com/ComposioHQ/awesome-claude-skills/main/README.md` | Largest curated catalog by community (62k+ stars) |
+| **agentskills.io** | `https://agentskills.io/llms.txt` (follow linked pages as needed) | Official spec site, LLM-friendly directory format |
+| **buildwithclaude (GitHub mirror)** | `https://raw.githubusercontent.com/davepoon/buildwithclaude/main/README.md` | Indexes skills, agents, plugins, marketplace collections across sources. The `buildwithclaude.com` website returns 403 to WebFetch — always use the mirror. |
+| **ComposioHQ awesome-list** | `https://raw.githubusercontent.com/ComposioHQ/awesome-claude-skills/master/README.md` | Largest curated catalog by community (62k+ stars). **Default branch is `master`, not `main`.** |
 
 Standard extraction prompt:
 
 > *"List every skill on this page relevant to `<user's need>`. For each: name, one-line description, source link, source repo (owner/repo). Skip unrelated entries. Return as a compact list."*
+
+### Branch-agnostic fallback
+
+If a hardcoded raw URL ever 404s (default branch renamed, repo moved), retry via the readme API endpoint — it auto-resolves the default branch:
+
+```
+WebFetch(
+  url="https://api.github.com/repos/<owner>/<repo>/readme",
+  prompt="Decode the base64 `content` field as markdown and list entries relevant to `<user's need>`."
+)
+```
+
+This costs one extra LLM-decode step but is immune to branch drift. Use it as the second attempt, not the first.
+
+### Failure handling
+
+If a Tier 1 source returns 4xx/5xx, drop it from the working set and continue with what succeeded. Don't retry the same URL. If all three fail, escalate to Tier 2 immediately rather than thrashing.
 
 ### Secondary registries (use as fallback, or to fill gaps)
 

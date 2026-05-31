@@ -61,15 +61,17 @@ Hit these 3 sources in parallel as your **first move**, before any GitHub search
 
 | Source | URL | What it gives you |
 |---|---|---|
-| Official spec + directory | `https://agentskills.io/llms.txt` then `https://agentskills.io/skills` (or relevant page) | LLM-friendly directory of canonical skills |
-| Community hub | `https://www.buildwithclaude.com/` | Skills, agents, plugins, and marketplace collections in one index |
-| Top awesome-list README | `https://raw.githubusercontent.com/ComposioHQ/awesome-claude-skills/main/README.md` | Largest community-curated index (62k+ stars) |
+| Official directory | `https://agentskills.io/llms.txt` | LLM-friendly index listing official + canonical skills with links |
+| Community hub (GitHub mirror) | `https://raw.githubusercontent.com/davepoon/buildwithclaude/main/README.md` | Index of skills, agents, plugins, marketplace collections. **Use the GitHub mirror — `buildwithclaude.com` itself blocks WebFetch.** |
+| Top awesome-list | `https://raw.githubusercontent.com/ComposioHQ/awesome-claude-skills/master/README.md` | Largest community-curated catalog (62k+ stars). **Branch is `master`, not `main`.** |
 
 Each call uses an extraction prompt like:
 
 > *"List every skill on this page relevant to `<user's need>`. For each: name, one-line description, link, and source repo if shown. Skip unrelated entries."*
 
-If registries return ≥3 strong candidates, **skip Tier 2** and go to Tier 3.
+**Handling failures.** If a Tier 1 source returns 4xx/5xx, drop it from the working set and continue with whatever succeeded — don't retry the same URL. Registry URLs change rarely; a failure usually means the source is down or the URL has shifted (in which case re-verify with `https://api.github.com/repos/<owner>/<repo>/readme`, which auto-resolves the default branch). If all three Tier 1 sources fail, escalate immediately to Tier 2.
+
+If at least two registries succeed and return ≥3 strong candidates, **skip Tier 2** and go to Tier 3.
 
 ### Tier 2 — Surgical GitHub search (only if Tier 1 thin)
 
