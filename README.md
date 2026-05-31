@@ -6,7 +6,7 @@ A personal collection of high-leverage Claude Agent Skills.
 
 | Skill | What it does |
 |---|---|
-| [`skill-finder`](skills/skill-finder/) | Find, rank, and compare the best Claude skills on GitHub for a specific need |
+| [`skill-finder`](skills/skill-finder/) | Find, rank, and compare the best Claude skills for a specific need — across curated registries, marketplaces, and GitHub |
 
 ## Install a skill into Claude Code
 

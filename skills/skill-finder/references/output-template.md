@@ -137,7 +137,7 @@ Options:
 
 **Honorable mentions:**
 - [`bergside/awesome-design-skills`](url) (★1k) — Curated list of 67 design skills, browse if you need something specific
-- [`ui-styling`](your-global) — You already have this installed; pairs well with frontend-design
+- `ui-styling` *(already installed in your global skills)* — pairs well with frontend-design
 
 **Next step:** Want me to install `acme/saas-copy` and walk you through pairing it with `frontend-design`?
 ```

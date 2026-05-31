@@ -1,11 +1,11 @@
 ---
 name: skill-finder
-description: Find, rank, and compare the best Claude Agent Skills on GitHub for a specific user need. Use whenever the user asks "what skill should I use for X", "find me a skill for X", "is there a skill that does X", "compare skills for X", "best skill for [content / SEO / landing pages / blog posts / SaaS / product / marketing / sales / code review / docs / anything]", or mentions wanting to discover, install, or evaluate Claude skills, plugins, or agents from the community. Trigger even when the user only hints at a need without saying the word "skill" — e.g. "I want to write SaaS comparison blog posts" or "help me build a landing page" — because there is almost certainly an existing community skill that does it better than starting from scratch.
+description: Find, rank, and compare the best Claude Agent Skills for a specific user need — across curated registries (agentskills.io, buildwithclaude), marketplaces, and GitHub. Use whenever the user asks "what skill should I use for X", "find me a skill for X", "is there a skill that does X", "compare skills for X", "best skill for [content / SEO / landing pages / blog posts / SaaS / product / marketing / sales / code review / docs / anything]", or mentions wanting to discover, install, or evaluate Claude skills, plugins, or agents from the community. Trigger even when the user only hints at a need without saying the word "skill" — e.g. "I want to write SaaS comparison blog posts" or "help me build a landing page" — because there is almost certainly an existing community skill that does it better than starting from scratch.
 ---
 
 # Skill Finder
 
-A meta-skill that turns a fuzzy user need into a ranked, compared shortlist of the best Claude Agent Skills on GitHub.
+A meta-skill that turns a fuzzy user need into a ranked, compared shortlist of the best Claude Agent Skills — sourced from curated registries, marketplaces, and GitHub.
 
 ## When to use this skill
 
@@ -24,8 +24,8 @@ If the user asks you to *write* a skill from scratch, that's a different job —
 Run these in order. Do not skip step 1 or step 4.
 
 1. **Clarify the need** — ask 1–3 sharp questions (only if the request is genuinely ambiguous)
-2. **Search** — query GitHub across multiple angles
-3. **Triage** — drop the noise, keep ~8–12 real candidates
+2. **Search** — 3-tier funnel: curated registries first, surgical GitHub second, deep-read top 3 third
+3. **Triage** — dedupe across sources, cut to ~6–8 finalists
 4. **Score** — rank against the rubric (see `references/evaluation-rubric.md`)
 5. **Present** — ranked comparison + a verdict (see `references/output-template.md`)
 
@@ -119,7 +119,7 @@ See `references/search-strategies.md` for the full registry catalog, fallback he
 
 ## Step 3 — Triage
 
-You'll typically get 50+ raw hits. Cut to ~8–12 real candidates before scoring. Drop:
+After Tier 1 (plus optional Tier 2) you'll have ~10–15 candidates, often with duplicates across sources. Dedupe by `owner/repo[/path]`, then cut to ~6–8 real finalists before scoring. Drop:
 
 - **Forks of the same upstream** (keep the canonical one — usually the most-starred)
 - **Stale repos** (no `pushedAt` in 12+ months *and* under 50 stars — exception: official Anthropic repos)
@@ -219,6 +219,6 @@ You: *Skip clarification (the "almost worked but missed X" signal is gold). Sear
 
 Load these on demand:
 
-- [`references/search-strategies.md`](references/search-strategies.md) — advanced GitHub search tactics, date/language filters, fork analysis, hidden gem discovery
+- [`references/search-strategies.md`](references/search-strategies.md) — full registry catalog, surgical GitHub tactics, freshness/fork/language filters, hidden gem discovery, optional `gh` CLI accelerator
 - [`references/evaluation-rubric.md`](references/evaluation-rubric.md) — the full scoring rubric with per-dimension criteria and worked examples
 - [`references/output-template.md`](references/output-template.md) — the exact output format with a fill-in-the-blank template
